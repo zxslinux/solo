@@ -12,8 +12,10 @@ pipeline {
       }
     }
 
-    stage('haha') {
-      sh 'echo haha'
+    stage('test') {
+      steps {
+        sh 'mvn test'
+      }
     }
   }
 
