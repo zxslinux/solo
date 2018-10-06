@@ -6,11 +6,10 @@ pipeline {
     registryCredential = "zxs60311"
   }
 
-  agent none
+  agent { docker 'maven:3-alpine' }
 
   stages {
     stage('Build') { 
-      agent { docker 'maven:3-alpine' }
       steps {sh 'mvn -B -DskipTests clean package'}
 
       steps {
