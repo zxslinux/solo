@@ -13,8 +13,7 @@ pipeline {
       steps {
       	sh 'mvn -B -DskipTests clean package'
       	scripts {
-          def customImage = docker.build("zxslinux/tomcat-solo:${env.BUILD_ID}")
-          customImage.push()
+      		docker.build registry + ":$BUILD_NUMBER"
         }
       }
   }
