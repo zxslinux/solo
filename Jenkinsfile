@@ -17,8 +17,12 @@ pipeline {
         dockerfile {
           filename 'Dockerfile'
           dir './'
-          label 'tomcat-solo:v2'
+          label 'zxslinux/tomcat-solo:v2'
         }
+      }
+      steps {
+        sh 'docker login -u zxslinux -p zxs60311'
+        sh 'docker push zxslinux/tomcat-solo:v2'
       }
     }
 
