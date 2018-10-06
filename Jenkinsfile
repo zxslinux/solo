@@ -12,13 +12,13 @@ pipeline {
     stage('Build') { 
       steps {sh 'mvn -B -DskipTests clean package'}
 
-    //   steps {
-    //     scripts {
-    //       def customImage = docker.build("zxslinux/tomcat-solo:${env.BUILD_ID}")
-    //       customImage.push()
-    //     }
-    //   }
-    // }
+      steps {
+        scripts {
+          def customImage = docker.build("zxslinux/tomcat-solo:${env.BUILD_ID}")
+          customImage.push()
+        }
+      }
+    
 
   }
 
