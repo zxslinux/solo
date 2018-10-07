@@ -1,26 +1,30 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.processor;
 
 import org.apache.commons.lang.StringUtils;
+import org.b3log.latke.Keys;
 import org.b3log.latke.model.User;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.solo.AbstractTestCase;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
+import org.b3log.solo.model.Option;
 import org.b3log.solo.model.Page;
 import org.b3log.solo.service.ArticleMgmtService;
 import org.b3log.solo.service.InitService;
@@ -45,7 +49,7 @@ import static org.mockito.Mockito.when;
  * {@link CommentProcessorTestCase} test case.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.0.0.2, Feb 13, 2018
+ * @version 1.0.0.4, Sep 20, 2018
  * @since 1.7.0
  */
 @Test(suiteName = "processor")
@@ -68,7 +72,7 @@ public class CommentProcessorTestCase extends AbstractTestCase {
         initService.init(requestJSONObject);
 
         final UserQueryService userQueryService = getUserQueryService();
-        Assert.assertNotNull(userQueryService.getUserByEmail("test@gmail.com"));
+        Assert.assertNotNull(userQueryService.getUserByEmailOrUserName("test@gmail.com"));
     }
 
     /**
@@ -82,6 +86,7 @@ public class CommentProcessorTestCase extends AbstractTestCase {
         when(request.getServletContext()).thenReturn(mock(ServletContext.class));
         when(request.getRequestURI()).thenReturn("/add-page-comment.do");
         when(request.getMethod()).thenReturn("POST");
+        when(request.getAttribute(Keys.TEMAPLTE_DIR_NAME)).thenReturn(Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
 
         CaptchaProcessor.CAPTCHA_ON = false;
 
@@ -122,6 +127,7 @@ public class CommentProcessorTestCase extends AbstractTestCase {
         when(request.getServletContext()).thenReturn(mock(ServletContext.class));
         when(request.getRequestURI()).thenReturn("/add-article-comment.do");
         when(request.getMethod()).thenReturn("POST");
+        when(request.getAttribute(Keys.TEMAPLTE_DIR_NAME)).thenReturn(Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
 
         CaptchaProcessor.CAPTCHA_ON = false;
 
@@ -175,7 +181,10 @@ public class CommentProcessorTestCase extends AbstractTestCase {
         final JSONObject article = new JSONObject();
         requestJSONObject.put(Article.ARTICLE, article);
 
-        article.put(Article.ARTICLE_AUTHOR_EMAIL, "test@gmail.com");
+        final JSONObject admin = getUserQueryService().getAdmin();
+        final String userId = admin.optString(Keys.OBJECT_ID);
+
+        article.put(Article.ARTICLE_AUTHOR_ID, userId);
         article.put(Article.ARTICLE_TITLE, "article1 title");
         article.put(Article.ARTICLE_ABSTRACT, "article1 abstract");
         article.put(Article.ARTICLE_CONTENT, "article1 content");

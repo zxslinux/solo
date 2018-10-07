@@ -1,3 +1,22 @@
+<#--
+
+    Solo - A small and beautiful blogging system written in Java.
+    Copyright (c) 2010-2018, b3log.org & hacpai.com
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-->
 <!--TODO i18n-->
 <!-- New noscript check, we need js on now folks -->
 <noscript>
@@ -30,14 +49,16 @@
                 <a href="#head-pages"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/Pages.png" alt=""/></a>
                 <a href="#head-tags"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/Tags.png" alt=""/></a>
                 <a href="#head-cats"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/Archives.png" alt=""/></a>
+                <a href="#head-category"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/category.png" alt=""/></a>
             </div>
 
             <ul id="head-pages">
                 <li id="admin" data-login="${isLoggedIn?string}"><a href="${servePath}/admin-index.do#main"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/Home.png" alt=""/>Admin</a></li>
                 <#list pageNavigations as page>
-                <li><a href="${page.pagePermalink}" target="${page.pageOpenTarget}"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/Apps.png" alt=""/>${page.pageTitle}</a></li>
+                <li><a href="${page.pagePermalink}" target="${page.pageOpenTarget}"><#if page.pageIcon != ''><img class="page-icon" src="${page.pageIcon}"></#if>${page.pageTitle}</a></li>
                 </#list>           
-                <li><a rel="alternate" href="${servePath}/blog-articles-rss.do"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/RSS.png" alt="" />RSS Feed</a></li>
+                <li><a rel="alternate" href="${servePath}/rss.xml"><img src="${staticServePath}/skins/${skinDirName}/images/icon-pool/RSS.png" alt="" />RSS Feed</a></li>
+                <li><a href="${servePath}/search?keyword=">Search</a></li>
             </ul>
             <ul id="head-tags">
                 <#if 0 != mostUsedTags?size>
@@ -59,6 +80,17 @@
                     </#if>
                 </li>
                 </#list>
+                </#if>
+            </ul>
+
+            <ul id="head-category">
+                <#if 0 != mostUsedCategories?size>
+                    <#list mostUsedCategories as category>
+                        <li>
+                            <a href="${servePath}/category/${category.categoryURI}">
+                                ${category.categoryTitle}</a>
+                        </li>
+                    </#list>
                 </#if>
             </ul>
 

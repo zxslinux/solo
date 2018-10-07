@@ -1,21 +1,24 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.processor;
 
-import org.b3log.latke.image.Image;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.math.RandomUtils;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.servlet.HTTPRequestContext;
@@ -24,8 +27,10 @@ import org.b3log.latke.servlet.annotation.RequestProcessing;
 import org.b3log.latke.servlet.annotation.RequestProcessor;
 import org.b3log.latke.servlet.renderer.PNGRenderer;
 import org.b3log.latke.util.Strings;
-import org.patchca.color.SingleColorFactory;
+import org.patchca.color.GradientColorFactory;
+import org.patchca.color.RandomColorFactory;
 import org.patchca.filter.predefined.CurvesRippleFilterFactory;
+import org.patchca.font.RandomFontFactory;
 import org.patchca.service.Captcha;
 import org.patchca.service.ConfigurableCaptchaService;
 import org.patchca.word.RandomWordFactory;
@@ -35,14 +40,16 @@ import javax.servlet.http.HttpServletResponse;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
  * Captcha processor.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 2.0.0.1, Apr 5, 2018
+ * @version 2.0.0.5, Sep 21, 2018
  * @since 0.3.1
  */
 @RequestProcessor
@@ -74,6 +81,11 @@ public class CaptchaProcessor {
     public static boolean CAPTCHA_ON = true;
 
     /**
+     * Captcha chars.
+     */
+    private static final String CHARS = "acdefhijklmnprstuvwxy234578";
+
+    /**
      * Gets captcha.
      *
      * @param context the specified context
@@ -85,13 +97,18 @@ public class CaptchaProcessor {
 
         try {
             final ConfigurableCaptchaService cs = new ConfigurableCaptchaService();
-            cs.setColorFactory(new SingleColorFactory(new Color(25, 60, 170)));
+            if (0.5 < Math.random()) {
+                cs.setColorFactory(new GradientColorFactory());
+            } else {
+                cs.setColorFactory(new RandomColorFactory());
+            }
             cs.setFilterFactory(new CurvesRippleFilterFactory(cs.getColorFactory()));
             final RandomWordFactory randomWordFactory = new RandomWordFactory();
-            randomWordFactory.setCharacters("abcdefghijklmnprstuvwxy23456789");
+            randomWordFactory.setCharacters(CHARS);
             randomWordFactory.setMinLength(CAPTCHA_LENGTH);
             randomWordFactory.setMaxLength(CAPTCHA_LENGTH);
             cs.setWordFactory(randomWordFactory);
+            cs.setFontFactory(new RandomFontFactory(getAvaialbeFonts()));
             final Captcha captcha = cs.getCaptcha();
             final String challenge = captcha.getChallenge();
             final BufferedImage bufferedImage = captcha.getImage();
@@ -109,10 +126,7 @@ public class CaptchaProcessor {
 
             try (final ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
                 ImageIO.write(bufferedImage, "png", baos);
-                final byte[] data = baos.toByteArray();
-                final Image captchaImg = new Image();
-                captchaImg.setData(data);
-                renderer.setImage(captchaImg);
+                renderer.setImage(baos.toByteArray());
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
@@ -130,13 +144,41 @@ public class CaptchaProcessor {
             return false;
         }
 
-        if (Strings.isEmptyOrNull(captcha) || captcha.length() != CAPTCHA_LENGTH) {
+        if (StringUtils.isBlank(captcha) || captcha.length() != CAPTCHA_LENGTH) {
             return true;
         }
 
         boolean ret = !CaptchaProcessor.CAPTCHAS.contains(captcha);
         if (!ret) {
             CaptchaProcessor.CAPTCHAS.remove(captcha);
+        }
+
+        return ret;
+    }
+
+    private static java.util.List<String> getAvaialbeFonts() {
+        final List<String> ret = new ArrayList<>();
+
+        final GraphicsEnvironment e = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        final Font[] fonts = e.getAllFonts();
+        for (final Font f : fonts) {
+            if (Strings.contains(f.getFontName(), new String[]{"Verdana", "DejaVu Sans Mono", "Tahoma"})) {
+                ret.add(f.getFontName());
+            }
+        }
+
+        if (0 < fonts.length) {
+            for (int i = 0; i < 5; i++) {
+                ret.add(fonts[RandomUtils.nextInt(fonts.length)].getFontName());
+            }
+        }
+
+        if (ret.isEmpty()) {
+            ret.add(Font.DIALOG);
+            ret.add(Font.DIALOG_INPUT);
+            ret.add(Font.SERIF);
+            ret.add(Font.SANS_SERIF);
+            ret.add(Font.MONOSPACED);
         }
 
         return ret;

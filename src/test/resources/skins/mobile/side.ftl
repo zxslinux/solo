@@ -1,3 +1,22 @@
+<#--
+
+    Solo - A small and beautiful blogging system written in Java.
+    Copyright (c) 2010-2018, b3log.org & hacpai.com
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-->
 <div id="sideNavi" class="side-navi">
     <#if "" != noticeBoard>
     <ul class="marginTop12">
@@ -21,7 +40,7 @@
                     ${comment.commentName}<#else>
                     <a target="_blank" href="${comment.commentURL}">
                         ${comment.commentName}</a></#if>:
-                    <a rel="nofollow" class='side-comment' title="${comment.commentContent}" href="${servePath}${comment.commentSharpURL}">
+                    <a rel="nofollow" class='side-comment' href="${servePath}${comment.commentSharpURL}">
                         ${comment.commentContent}
                     </a>
                 </li>
@@ -75,9 +94,6 @@
             <ul>
                 <#list mostUsedTags as tag>
                 <li>
-                    <a rel="alternate" href="${servePath}/tag-articles-feed.do?oId=${tag.oId}" class="no-underline">
-                        <img alt="${tag.tagTitle}" src="${staticServePath}/images/feed.png"/>
-                    </a>
                     <a rel="tag" title="${tag.tagTitle}(${tag.tagPublishedRefCount})" href="${servePath}/tags/${tag.tagTitle?url('UTF-8')}">
                         ${tag.tagTitle}</a>
                     (${tag.tagPublishedRefCount})
@@ -135,3 +151,15 @@
     </ul>
     </#if>
 </div>
+<ul id="head-category">
+    <#if 0 != mostUsedCategories?size>
+        <#list mostUsedCategories as category>
+            <li>
+                <a href="${servePath}/category/${category.categoryURI}"
+                   aria-label="${category.categoryTagCnt} ${tagsLabel}"
+                   class="tag tooltipped tooltipped-n">
+                    ${category.categoryTitle}</a>
+            </li>
+        </#list>
+    </#if>
+</ul>

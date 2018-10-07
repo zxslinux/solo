@@ -1,24 +1,26 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 /**
  * @fileoverview markdowm CodeMirror editor
  *
  * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.5.0.0, Mar 15, 2018
+ * @version 1.5.1.0, Jul 8, 2018
  */
 
 Util.processClipBoard = function (text, cm) {
@@ -81,7 +83,7 @@ Util.processClipBoard = function (clipboardData, cm) {
 };
 
 Util.initUploadFile = function (obj) {
-  var isImg = false;
+  var cursor;
   $('#' + obj.id).fileupload({
     multipart: true,
     pasteZone: obj.pasteZone,
@@ -89,6 +91,7 @@ Util.initUploadFile = function (obj) {
     url: latkeConfig.servePath + "/upload",
     paramName: "file[]",
     add: function (e, data) {
+      obj.uploadingLabel = '';
       data.submit();
     },
     submit: function (e, data) {
@@ -100,12 +103,11 @@ Util.initUploadFile = function (obj) {
             obj.uploadingLabel += '[' + item.name.replace(/\W/g, '')  + '](Uploading...)';
           }
         });
-        var cursor = obj.editor.getCursor();
+        cursor = obj.editor.getCursor();
         obj.editor.replaceRange(obj.uploadingLabel, cursor, cursor);
       }
     },
     done: function (e, data) {
-      var cursor = obj.editor.getCursor();
       if (!data.result.sc) {
         var msg = '';
         data.files.forEach(function (item) {
@@ -117,7 +119,7 @@ Util.initUploadFile = function (obj) {
         });
 
         obj.editor.replaceRange(msg,
-          CodeMirror.Pos(cursor.line, cursor.ch - obj.uploadingLabel.length), cursor);
+            cursor, CodeMirror.Pos(cursor.line, cursor.ch + obj.uploadingLabel.length));
         return;
       }
 
@@ -125,25 +127,22 @@ Util.initUploadFile = function (obj) {
       Object.keys(data.result.data.succMap).forEach(function (key) {
         var isImage = false;
         data.files.forEach(function (item) {
-          if (item.name.replace(/\W/g, '') === key) {
-            isImage = item.type.indexOf('image') > -1
-          }
+          isImage = item.type.indexOf('image') > -1
         });
         resultMsg += (isImage ? '![' : '[') +
           key.replace(/\W/g, '') + '](' + data.result.data.succMap[key] + ') \n\n';
       });
+
       data.result.data.errFiles.forEach(function (name) {
         var isImage = false;
         data.files.forEach(function (item) {
-          if (item.name.replace(/\W/g, '') === key) {
             isImage = item.type.indexOf('image') > -1
-          }
         });
         resultMsg += (isImage ? '![' : '[') +
           '[' +  name.replace(/\W/g, '')+ '](Error)';
       });
       obj.editor.replaceRange(resultMsg,
-        CodeMirror.Pos(cursor.line, cursor.ch - obj.uploadingLabel.length), cursor);
+          cursor, CodeMirror.Pos(cursor.line, cursor.ch + obj.uploadingLabel.length));
     },
     fail: function (e, data) {
       if (obj.editor.replaceRange) {
@@ -155,9 +154,8 @@ Util.initUploadFile = function (obj) {
             msg += '[' + item.name.replace(/\W/g, '') + '](' + data.errorThrown + ')';
           }
         });
-        var cursor = obj.editor.getCursor();
-        obj.editor.replaceRange('[' + item.name.replace(/\W/g, '') + '](' + data.errorThrown + ')',
-          CodeMirror.Pos(cursor.line, cursor.ch - obj.uploadingLabel.length), cursor);
+        obj.editor.replaceRange(msg,
+            cursor, CodeMirror.Pos(cursor.line, cursor.ch + obj.uploadingLabel.length));
       }
     }
   });
@@ -249,10 +247,8 @@ admin.editors.CodeMirror = {
     Util.initUploadFile({
       "id": conf.id + 'fileUpload',
       "pasteZone": $('#' + conf.id).next().next(),
-      "qiniuUploadToken": qiniu.qiniuUploadToken,
       "editor": commentEditor.codemirror,
-      "uploadingLabel": '',
-      "qiniuDomain": '//' + qiniu.qiniuDomain
+      "uploadingLabel": ''
     });
 
     this[conf.id] = commentEditor.codemirror;
@@ -271,6 +267,7 @@ admin.editors.CodeMirror = {
         },
         success: function (result, textStatus) {
           $('#' + conf.id).parent().find('.CodeMirror-preview').html(result.html);
+          Util.parseMarkdown('content-reset');
           hljs.initHighlighting.called = false;
           hljs.initHighlighting();
         }

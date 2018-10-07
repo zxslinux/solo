@@ -1,23 +1,28 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.processor;
 
+import org.apache.commons.codec.digest.DigestUtils;
+import org.apache.commons.lang.RandomStringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.inject.Inject;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.mail.MailService;
@@ -32,22 +37,17 @@ import org.b3log.latke.servlet.HTTPRequestContext;
 import org.b3log.latke.servlet.HTTPRequestMethod;
 import org.b3log.latke.servlet.annotation.RequestProcessing;
 import org.b3log.latke.servlet.annotation.RequestProcessor;
+import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.servlet.renderer.JSONRenderer;
-import org.b3log.latke.servlet.renderer.freemarker.AbstractFreeMarkerRenderer;
-import org.b3log.latke.user.UserService;
-import org.b3log.latke.user.UserServiceFactory;
-import org.b3log.latke.util.MD5;
+import org.b3log.latke.util.Requests;
 import org.b3log.latke.util.Sessions;
-import org.b3log.latke.util.Strings;
 import org.b3log.solo.SoloServletListener;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
-import org.b3log.solo.processor.renderer.ConsoleRenderer;
-import org.b3log.solo.processor.util.Filler;
+import org.b3log.solo.processor.console.ConsoleRenderer;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.service.*;
-import org.b3log.solo.util.Mails;
-import org.b3log.solo.util.Randoms;
+import org.b3log.solo.util.Solos;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -64,7 +64,7 @@ import java.util.Map;
  * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
  * @author <a href="mailto:dongxu.wang@acm.org">Dongxu Wang</a>
  * @author <a href="https://github.com/nanolikeyou">nanolikeyou</a>
- * @version 1.1.1.11, Mar 3, 2018
+ * @version 1.1.1.14, Oct 5, 2018
  * @since 0.3.1
  */
 @RequestProcessor
@@ -80,11 +80,6 @@ public class LoginProcessor {
      */
     @Inject
     private UserQueryService userQueryService;
-
-    /**
-     * User service.
-     */
-    private UserService userService = UserServiceFactory.getUserService();
 
     /**
      * Mail service.
@@ -104,10 +99,10 @@ public class LoginProcessor {
     private LangPropsService langPropsService;
 
     /**
-     * Filler.
+     * DataModelService.
      */
     @Inject
-    private Filler filler;
+    private DataModelService dataModelService;
 
     /**
      * Preference query service.
@@ -144,17 +139,14 @@ public class LoginProcessor {
         final HttpServletRequest request = context.getRequest();
 
         String destinationURL = request.getParameter(Common.GOTO);
-        if (Strings.isEmptyOrNull(destinationURL)) {
+        if (StringUtils.isBlank(destinationURL)) {
             destinationURL = Latkes.getServePath() + Common.ADMIN_INDEX_URI;
         } else if (!isInternalLinks(destinationURL)) {
             destinationURL = "/";
         }
 
         final HttpServletResponse response = context.getResponse();
-
-        userMgmtService.tryLogInWithCookie(request, response);
-
-        if (null != userService.getCurrentUser(request)) { // User has already logged in
+        if (null != Solos.getCurrentUser(request, response)) { // User has already logged in
             response.sendRedirect(destinationURL);
 
             return;
@@ -189,42 +181,36 @@ public class LoginProcessor {
 
         try {
             jsonObject.put(Common.IS_LOGGED_IN, false);
-            final String loginFailLabel = langPropsService.get("loginFailLabel");
+            jsonObject.put(Keys.MSG, langPropsService.get("loginFailLabel"));
 
-            jsonObject.put(Keys.MSG, loginFailLabel);
-
-            final String userEmail = requestJSONObject.getString(User.USER_EMAIL);
+            final String userEmail = requestJSONObject.getString(User.USER_EMAIL); // email or username
             final String userPwd = requestJSONObject.getString(User.USER_PASSWORD);
-
-            if (Strings.isEmptyOrNull(userEmail) || Strings.isEmptyOrNull(userPwd)) {
+            if (StringUtils.isBlank(userEmail) || StringUtils.isBlank(userPwd)) {
                 return;
             }
 
-            final JSONObject user = userQueryService.getUserByEmail(userEmail);
+            final JSONObject user = userQueryService.getUserByEmailOrUserName(userEmail);
             if (null == user) {
-                LOGGER.log(Level.WARN, "Not found user[email={0}]", userEmail);
+                LOGGER.log(Level.WARN, "Not found user [email={0}]", userEmail);
+
                 return;
             }
-
-            if (MD5.hash(userPwd).equals(user.getString(User.USER_PASSWORD))) {
+            if (DigestUtils.md5Hex(userPwd).equals(user.getString(User.USER_PASSWORD))) {
                 Sessions.login(request, context.getResponse(), user);
-
-                LOGGER.log(Level.INFO, "Logged in[email={0}]", userEmail);
+                LOGGER.log(Level.INFO, "Logged in [email={0}, remoteAddr={1}]", userEmail, Requests.getRemoteAddr(request));
 
                 jsonObject.put(Common.IS_LOGGED_IN, true);
-
                 if (Role.VISITOR_ROLE.equals(user.optString(User.USER_ROLE))) {
                     jsonObject.put("to", Latkes.getServePath());
                 } else {
                     jsonObject.put("to", Latkes.getServePath() + Common.ADMIN_INDEX_URI);
                 }
-
                 jsonObject.remove(Keys.MSG);
 
                 return;
             }
 
-            LOGGER.log(Level.WARN, "Wrong password[{0}]", userPwd);
+            LOGGER.log(Level.WARN, "Wrong password [{0}] for user [{1}]", userPwd, userEmail);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
         }
@@ -234,17 +220,16 @@ public class LoginProcessor {
      * Logout.
      *
      * @param context the specified context
-     * @throws IOException io exception
+     * @throws Exception exception
      */
     @RequestProcessing(value = "/logout", method = HTTPRequestMethod.GET)
-    public void logout(final HTTPRequestContext context) throws IOException {
+    public void logout(final HTTPRequestContext context) throws Exception {
         final HttpServletRequest httpServletRequest = context.getRequest();
 
         Sessions.logout(httpServletRequest, context.getResponse());
 
         String destinationURL = httpServletRequest.getParameter(Common.GOTO);
-
-        if (Strings.isEmptyOrNull(destinationURL) || !isInternalLinks(destinationURL)) {
+        if (StringUtils.isBlank(destinationURL) || !isInternalLinks(destinationURL)) {
             destinationURL = "/";
         }
 
@@ -262,8 +247,7 @@ public class LoginProcessor {
         final HttpServletRequest request = context.getRequest();
 
         String destinationURL = request.getParameter(Common.GOTO);
-
-        if (Strings.isEmptyOrNull(destinationURL)) {
+        if (StringUtils.isBlank(destinationURL)) {
             destinationURL = Latkes.getServePath() + Common.ADMIN_INDEX_URI;
         } else if (!isInternalLinks(destinationURL)) {
             destinationURL = "/";
@@ -300,14 +284,14 @@ public class LoginProcessor {
 
             final String userEmail = requestJSONObject.getString(User.USER_EMAIL);
 
-            if (Strings.isEmptyOrNull(userEmail)) {
+            if (StringUtils.isBlank(userEmail)) {
                 LOGGER.log(Level.WARN, "Why user's email is empty");
                 return;
             }
 
             LOGGER.log(Level.INFO, "Login[email={0}]", userEmail);
 
-            final JSONObject user = userQueryService.getUserByEmail(userEmail);
+            final JSONObject user = userQueryService.getUserByEmailOrUserName(userEmail);
             if (null == user) {
                 LOGGER.log(Level.WARN, "Not found user[email={0}]", userEmail);
                 jsonObject.put(Keys.MSG, langPropsService.get("userEmailNotFoundMsg"));
@@ -358,7 +342,7 @@ public class LoginProcessor {
                 return;
             }
             final String userEmail = passwordResetOption.getString(Option.OPTION_VALUE);
-            final JSONObject user = userQueryService.getUserByEmail(userEmail);
+            final JSONObject user = userQueryService.getUserByEmailOrUserName(userEmail);
 
             user.put(User.USER_PASSWORD, newPwd);
             userMgmtService.updateUser(user);
@@ -395,15 +379,13 @@ public class LoginProcessor {
     private void sendResetUrl(final String userEmail, final JSONObject jsonObject) throws JSONException,
             ServiceException, IOException, RepositoryException {
         final JSONObject preference = preferenceQueryService.getPreference();
-        final String token = new Randoms().nextStringWithMD5();
+        final String token = RandomStringUtils.randomAlphanumeric(8);
         final String adminEmail = preference.getString(Option.ID_C_ADMIN_EMAIL);
         final String mailSubject = langPropsService.get("resetPwdMailSubject");
-        final String mailBody = langPropsService.get("resetPwdMailBody") + " " + Latkes.getServePath()
-                + "/forgot?token=" + token;
+        final String mailBody = langPropsService.get("resetPwdMailBody") + " " + Latkes.getServePath() + "/forgot?token=" + token;
         final MailService.Message message = new MailService.Message();
 
         final JSONObject option = new JSONObject();
-
         option.put(Keys.OBJECT_ID, token);
         option.put(Option.OPTION_CATEGORY, "passwordReset");
         option.put(Option.OPTION_VALUE, userEmail);
@@ -416,7 +398,7 @@ public class LoginProcessor {
         message.setSubject(mailSubject);
         message.setHtmlBody(mailBody);
 
-        if (Mails.isConfigured()) {
+        if (Solos.isConfigured()) {
             mailService.send(message);
         } else {
             LOGGER.log(Level.INFO, "Do not send mail caused by not configure mail.properties");
@@ -442,7 +424,6 @@ public class LoginProcessor {
     private void renderPage(final HTTPRequestContext context, final String pageTemplate, final String destinationURL,
                             final HttpServletRequest request) throws JSONException, ServiceException {
         final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer();
-
         renderer.setTemplateName(pageTemplate);
         context.setRenderer(renderer);
 
@@ -457,7 +438,10 @@ public class LoginProcessor {
         dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
         dataModel.put(Option.ID_C_BLOG_TITLE, preference.getString(Option.ID_C_BLOG_TITLE));
 
-        final String token = request.getParameter("token");
+        String token = request.getParameter("token");
+        if (StringUtils.isBlank(token)) {
+            token = "";
+        }
         final JSONObject tokenObj = optionQueryService.getOptionById(token);
 
         if (tokenObj == null) {
@@ -479,7 +463,7 @@ public class LoginProcessor {
         }
 
         Keys.fillRuntime(dataModel);
-        filler.fillMinified(dataModel);
+        dataModelService.fillMinified(dataModel);
     }
 
     /**

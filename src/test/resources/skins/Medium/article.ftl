@@ -1,3 +1,22 @@
+<#--
+
+    Solo - A small and beautiful blogging system written in Java.
+    Copyright (c) 2010-2018, b3log.org & hacpai.com
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-->
 <#include "macro-head.ftl">
 <#include "macro-comments.ftl">
 <!DOCTYPE html>
@@ -32,6 +51,8 @@
 </head>
 <body>
 <#include "header.ftl">
+<div id="pjaxArticle">
+    <#if pjax><!---- pjax {#pjaxArticle} start ----></#if>
 <div class="main post__main">
 <#if noticeBoard??>
     <div class="board">
@@ -63,7 +84,9 @@
                 </div>
             </#if>
             </section>
-            <footer class="post__tags">
+            <footer data-oid="${article.oId}"
+                    class="post__tags"
+                    data-tag="<#list article.articleTags?split(",") as articleTag>${articleTag}<#if articleTag_has_next>,</#if></#list>">
             <#list article.articleTags?split(",") as articleTag>
                 <a class="tag" rel="tag" href="${servePath}/tags/${articleTag?url('UTF-8')}">
                 ${articleTag}</a>
@@ -193,7 +216,10 @@
               data-avatar="${article.authorThumbnailURL}"></span>
     </div>
 </div>
-<script type="text/javascript" src="${staticServePath}/js/lib/jquery/jquery.min.js" charset="utf-8"></script>
+
+        <#if pjax><!---- pjax {#pjaxArticle} end ----></#if>
+</div>
+<script type="text/javascript" src="${staticServePath}/js/lib/compress/pjax.min.js" charset="utf-8"></script>
 <script type="text/javascript" src="${staticServePath}/js/common${miniPostfix}.js?${staticResourceVersion}"
         charset="utf-8"></script>
 <script type="text/javascript"
@@ -232,17 +258,19 @@
     Skin.initArticle();
 </script>
 <@comment_script oId=article.oId>
-    page.tips.externalRelevantArticlesDisplayCount = "${externalRelevantArticlesDisplayCount}";
-    <#if 0 != randomArticlesDisplayCount>
-    page.loadRandomArticles("<div class='module__title'><span>${randomArticlesLabel}</span></div>");
-    </#if>
-    <#if 0 != externalRelevantArticlesDisplayCount>
-    page.loadExternalRelevantArticles("<#list article.articleTags?split(",") as articleTag>${articleTag}<#if articleTag_has_next>,</#if></#list>"
-    , "<div class='module__title'><span>${externalRelevantArticlesLabel}</span></div>");
-    </#if>
-    <#if 0 != relevantArticlesDisplayCount>
-    page.loadRelevantArticles('${article.oId}', '<div class="module__title"><span>${relevantArticlesLabel}</span></div>');
-    </#if>
+    Skin.initComment = function (articleOId, articleTags) {
+        page.tips.externalRelevantArticlesDisplayCount = "${externalRelevantArticlesDisplayCount}";
+        <#if 0 != randomArticlesDisplayCount>
+        page.loadRandomArticles("<div class='module__title'><span>${randomArticlesLabel}</span></div>");
+        </#if>
+        <#if 0 != externalRelevantArticlesDisplayCount>
+        page.loadExternalRelevantArticles(articleTags, "<div class='module__title'><span>${externalRelevantArticlesLabel}</span></div>");
+        </#if>
+        <#if 0 != relevantArticlesDisplayCount>
+        page.loadRelevantArticles(articleOId, '<div class="module__title"><span>${relevantArticlesLabel}</span></div>');
+        </#if>
+    }
+    Skin.initComment('${article.oId}', "<#list article.articleTags?split(",") as articleTag>${articleTag}<#if articleTag_has_next>,</#if></#list>")
 </@comment_script>
 ${plugins}
 </body>

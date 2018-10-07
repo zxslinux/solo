@@ -1,24 +1,26 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 /**
  * @fileoverview util and every page should be used.
  *
  * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.3.1.1, Jan 29, 2018
+ * @version 1.4.0.0, Sep 10, 2018
  */
 
 /**
@@ -26,6 +28,74 @@
  * @static
  */
 var Util = {
+  htmlDecode: function (code) {
+    var div = document.createElement('div')
+    div.innerHTML = decodeURIComponent(code)
+    return div.innerText
+  },
+  isArticlePage: function (href) {
+    var isArticle = true;
+    if (href.indexOf(latkeConfig.servePath + '/tags/') > -1) {
+      isArticle = false;
+    }
+    if (href.indexOf(latkeConfig.servePath + '/tags.html') > -1) {
+      isArticle = false;
+    }
+    if (href.indexOf(latkeConfig.servePath + '/category/') > -1) {
+      isArticle = false;
+    }
+    if (href.indexOf(latkeConfig.servePath + '/archives.html') > -1) {
+      isArticle = false;
+    }
+    if (href.indexOf(latkeConfig.servePath + '/archives/') > -1) {
+      isArticle = false;
+    }
+    if (href.indexOf(latkeConfig.servePath + '/links.html') > -1) {
+      isArticle = false;
+    }
+    if (href === latkeConfig.servePath) {
+      isArticle = false;
+    }
+    if (/^[0-9]*$/.test(href.replace(latkeConfig.servePath + '/', ''))) {
+      isArticle = false;
+    }
+    return isArticle;
+  },
+  /**
+   * 初始化 Pjax
+   * @param cb 除文章和自定义页面外的其他页面加载回调
+   */
+  initPjax: function (cb) {
+    if ($('#pjax').length === 1) {
+      $.pjax({
+        selector: 'a',
+        container: '#pjax',
+        show: '',
+        cache: false,
+        storage: true,
+        titleSuffix: '',
+        filter: function(href){
+          if (href === latkeConfig.servePath + '/rss.xml') {
+            return true
+          }
+          if (href.indexOf(latkeConfig.servePath) > -1) {
+            return false
+          }
+          return true
+        },
+        callback: function () {
+          cb && cb()
+        }
+      });
+      NProgress.configure({ showSpinner: false });
+      $('#pjax').bind('pjax.start', function(){
+        NProgress.start();
+      });
+      $('#pjax').bind('pjax.end', function(){
+        NProgress.done();
+      });
+    }
+  },
   /**
    * 按需加载 MathJax 及 flow
    * @returns {undefined}
@@ -36,12 +106,16 @@ var Util = {
     var className = className || 'article-body';
     $('.' + className).each(function () {
       $(this).find('p').each(function () {
-        if ($(this).text().indexOf('$\\') > -1 || $(this).text().indexOf('$$') > -1) {
+        if ($(this).text().split('$').length > 2 ||
+          ($(this).text().split('\\(').length > 1 &&
+            $(this).text().split('\\)').length > 1)) {
           hasMathJax = true;
+          return false;
         }
       });
       if ($(this).find('code.lang-flow, code.language-flow').length > 0) {
         hasFlow = true
+        return false;
       }
     });
 
@@ -135,31 +209,32 @@ var Util = {
   /**
    * @description IE6/7，跳转到 kill-browser 页面
    */
-  killIE: function () {
+  killIE: function (ieVersion) {
     var addKillPanel = function () {
       if (Cookie.readCookie("showKill") === "") {
-        var left = ($(window).width() - 701) / 2,
-          top1 = ($(window).height() - 420) / 2;
-        $("body").append("<div style='display: block; height: 100%; width: 100%; position: fixed; background-color: rgb(0, 0, 0); opacity: 0.6; top: 0px;z-index:11'></div>"
-          + "<iframe style='left:" + left + "px;z-index:20;top: " + top1 + "px; position: fixed; border: 0px none; width: 701px; height: 420px;' src='" + latkeConfig.servePath + "/kill-browser'></iframe>");
+        try {
+          var left = ($(window).width() - 781) / 2,
+              top1 = ($(window).height() - 680) / 2;
+          var killIEHTML = "<div style='display: block; height: 100%; width: 100%; position: fixed; background-color: rgb(0, 0, 0); opacity: 0.6;filter: alpha(opacity=60); top: 0px;z-index:110'></div>"
+              + "<iframe style='left:" + left + "px;z-index:120;top: " + top1 + "px; position: fixed; border: 0px none; width: 781px; height: 680px;' src='" + latkeConfig.servePath + "/kill-browser'></iframe>";
+          $("body").append(killIEHTML)
+        } catch (e) {
+          var left = 10,
+              top1 = 0;
+          var killIEHTML = "<div style='display: block; height: 100%; width: 100%; position: fixed; background-color: rgb(0, 0, 0); opacity: 0.6;filter: alpha(opacity=60); top: 0px;z-index:110'></div>"
+              + "<iframe style='left:" + left + "px;z-index:120;top: " + top1 + "px; position: fixed; border: 0px none; width: 781px; height: 680px;' src='" + latkeConfig.servePath + "/kill-browser'></iframe>";
+          document.body.innerHTML = document.body.innerHTML + killIEHTML
+        }
       }
     };
 
-    if ($.browser.msie) {
-      // kill IE6 and IE7
-      if ($.browser.version === "6.0" || $.browser.version === "7.0") {
-        addKillPanel();
-        return;
+    var ua = navigator.userAgent.split('MSIE')[1]
+    if (ua) {
+      if (!ieVersion) {
+        ieVersion = 7
       }
-
-      // 后台页面 kill 360
-      if (window.external && window.external.twGetRunPath) {
-        var path = external.twGetRunPath();
-        if (path && path.toLowerCase().indexOf("360se") > -1 &&
-          window.location.href.indexOf("admin-index") > -1) {
-          addKillPanel();
-          return;
-        }
+      if (parseFloat(ua.split(';')) <= ieVersion){
+        addKillPanel();
       }
     }
   },

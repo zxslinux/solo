@@ -1,3 +1,22 @@
+<#--
+
+    Solo - A small and beautiful blogging system written in Java.
+    Copyright (c) 2010-2018, b3log.org & hacpai.com
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Affero General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Affero General Public License for more details.
+
+    You should have received a copy of the GNU Affero General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+-->
 <nav id="headerNav" class="header__nav">
     <div class="wrapper">
         <a href="${servePath}">
@@ -29,24 +48,35 @@
             </svg> ${linkLabel}
         </a>
 
-        <a rel="alternate" href="${servePath}/blog-articles-rss.do" rel="section">
+        <a rel="alternate" href="${servePath}/rss.xml" rel="section">
             <svg>
                 <use xlink:href="#icon-feed"></use>
             </svg>
             RSS
         </a>
-
     <#if isLoggedIn>
         <a href="${servePath}/admin-index.do#main">
             <svg>
                 <use xlink:href="#icon-setting"></use>
             </svg> ${adminLabel}
         </a>
+        <a href="${logoutURL}">
+            <svg>
+                <use xlink:href="#icon-out"></use>
+            </svg>
+            ${logoutLabel}
+        </a>
     <#else>
         <a href="${loginURL}">
             <svg>
                 <use xlink:href="#icon-enter"></use>
             </svg> ${loginLabel}
+        </a>
+        <a rel="alternate" href="${servePath}/register" rel="section">
+            <svg>
+                <use xlink:href="#icon-register"></use>
+            </svg>
+            ${registerLabel}
         </a>
     </#if>
     </div>

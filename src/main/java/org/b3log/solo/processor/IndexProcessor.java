@@ -1,24 +1,26 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.processor;
 
-import freemarker.template.Template;
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
-import org.b3log.latke.ioc.inject.Inject;
+import org.b3log.latke.Latkes;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.Pagination;
@@ -29,17 +31,15 @@ import org.b3log.latke.servlet.HTTPRequestMethod;
 import org.b3log.latke.servlet.URIPatternMode;
 import org.b3log.latke.servlet.annotation.RequestProcessing;
 import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.freemarker.AbstractFreeMarkerRenderer;
-import org.b3log.latke.servlet.renderer.freemarker.FreeMarkerRenderer;
+import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.servlet.renderer.DoNothingRenderer;
 import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Requests;
-import org.b3log.latke.util.freemarker.Templates;
-import org.b3log.solo.SoloServletListener;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.Skin;
-import org.b3log.solo.processor.renderer.ConsoleRenderer;
-import org.b3log.solo.processor.util.Filler;
+import org.b3log.solo.processor.console.ConsoleRenderer;
+import org.b3log.solo.service.DataModelService;
 import org.b3log.solo.service.PreferenceQueryService;
 import org.b3log.solo.service.StatisticMgmtService;
 import org.b3log.solo.util.Skins;
@@ -48,18 +48,14 @@ import org.json.JSONObject;
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Index processor.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="mailto:385321165@qq.com">DASHU</a>
- * @version 1.2.4.6, Jun 28, 2017
+ * @version 1.2.4.8, Sep 26, 2018
  * @since 0.3.1
  */
 @RequestProcessor
@@ -71,10 +67,10 @@ public class IndexProcessor {
     private static final Logger LOGGER = Logger.getLogger(IndexProcessor.class);
 
     /**
-     * Filler.
+     * DataModelService.
      */
     @Inject
-    private Filler filler;
+    private DataModelService dataModelService;
 
     /**
      * Preference query service.
@@ -95,27 +91,17 @@ public class IndexProcessor {
     private StatisticMgmtService statisticMgmtService;
 
     /**
-     * Gets the request page number from the specified request URI.
-     *
-     * @param requestURI the specified request URI
-     * @return page number, returns {@code -1} if the specified request URI can not convert to an number
-     */
-    private static int getCurrentPageNum(final String requestURI) {
-        final String pageNumString = StringUtils.substringAfterLast(requestURI, "/");
-
-        return Requests.getCurrentPageNum(pageNumString);
-    }
-
-    /**
      * Shows index with the specified context.
      *
      * @param context  the specified context
      * @param request  the specified HTTP servlet request
      * @param response the specified HTTP servlet response
+     * @throws Exception exception
      */
     @RequestProcessing(value = {"/\\d*", ""}, uriPatternsMode = URIPatternMode.REGEX, method = HTTPRequestMethod.GET)
-    public void showIndex(final HTTPRequestContext context, final HttpServletRequest request, final HttpServletResponse response) {
-        final AbstractFreeMarkerRenderer renderer = new FreeMarkerRenderer();
+    public void showIndex(final HTTPRequestContext context, final HttpServletRequest request, final HttpServletResponse response)
+            throws Exception {
+        final AbstractFreeMarkerRenderer renderer = new SkinRenderer(request);
         context.setRenderer(renderer);
         renderer.setTemplateName("index.ftl");
         final Map<String, Object> dataModel = renderer.getDataModel();
@@ -140,20 +126,10 @@ public class IndexProcessor {
                 specifiedSkin = preference.optString(Option.ID_C_SKIN_DIR_NAME);
             }
 
-            final Set<String> skinDirNames = Skins.getSkinDirNames();
-            if (skinDirNames.contains(specifiedSkin)) {
-                Templates.MAIN_CFG.setServletContextForTemplateLoading(SoloServletListener.getServletContext(),
-                        "/skins/" + specifiedSkin);
-                request.setAttribute(Keys.TEMAPLTE_DIR_NAME, specifiedSkin);
-            }
-
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), (String) request.getAttribute(Keys.TEMAPLTE_DIR_NAME), dataModel);
 
-            filler.fillIndexArticles(request, dataModel, currentPageNum, preference);
-
-            filler.fillSide(request, dataModel, preference);
-            filler.fillBlogHeader(request, response, dataModel, preference);
-            filler.fillBlogFooter(request, dataModel, preference);
+            dataModelService.fillIndexArticles(request, dataModel, currentPageNum, preference);
+            dataModelService.fillCommon(request, response, dataModel, preference);
 
             dataModel.put(Pagination.PAGINATION_CURRENT_PAGE_NUM, currentPageNum);
             final int previousPageNum = currentPageNum > 1 ? currentPageNum - 1 : 0;
@@ -177,11 +153,7 @@ public class IndexProcessor {
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            try {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            } catch (final IOException ex) {
-                LOGGER.error(ex.getMessage());
-            }
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
         }
     }
 
@@ -191,34 +163,28 @@ public class IndexProcessor {
      * @param context  the specified context
      * @param request  the specified HTTP servlet request
      * @param response the specified HTTP servlet response
+     * @throws Exception exception
      */
     @RequestProcessing(value = "/kill-browser", method = HTTPRequestMethod.GET)
-    public void showKillBrowser(final HTTPRequestContext context, final HttpServletRequest request, final HttpServletResponse response) {
-        final AbstractFreeMarkerRenderer renderer = new KillBrowserRenderer();
-
+    public void showKillBrowser(final HTTPRequestContext context, final HttpServletRequest request, final HttpServletResponse response)
+            throws Exception {
+        final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer();
         context.setRenderer(renderer);
+        renderer.setTemplateName("kill-browser.ftl");
 
         final Map<String, Object> dataModel = renderer.getDataModel();
-
         try {
             final Map<String, String> langs = langPropsService.getAll(Locales.getLocale(request));
-
             dataModel.putAll(langs);
             final JSONObject preference = preferenceQueryService.getPreference();
-
-            filler.fillBlogHeader(request, response, dataModel, preference);
-            filler.fillBlogFooter(request, dataModel, preference);
+            dataModelService.fillCommon(request, response, dataModel, preference);
             Keys.fillServer(dataModel);
             Keys.fillRuntime(dataModel);
-            filler.fillMinified(dataModel);
+            dataModelService.fillMinified(dataModel);
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            try {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            } catch (final IOException ex) {
-                LOGGER.error(ex.getMessage());
-            }
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
         }
     }
 
@@ -228,90 +194,50 @@ public class IndexProcessor {
      * @param context  the specified context
      * @param request  the specified HTTP servlet request
      * @param response the specified HTTP servlet response
+     * @throws Exception exception
      */
     @RequestProcessing(value = "/register", method = HTTPRequestMethod.GET)
-    public void register(final HTTPRequestContext context, final HttpServletRequest request, final HttpServletResponse response) {
+    public void register(final HTTPRequestContext context, final HttpServletRequest request, final HttpServletResponse response)
+            throws Exception {
         final AbstractFreeMarkerRenderer renderer = new ConsoleRenderer();
-
         context.setRenderer(renderer);
-
         renderer.setTemplateName("register.ftl");
 
         final Map<String, Object> dataModel = renderer.getDataModel();
-
         try {
-            final Map<String, String> langs = langPropsService.getAll(Locales.getLocale(request));
-
+            final Map<String, String> langs = langPropsService.getAll(Latkes.getLocale());
             dataModel.putAll(langs);
-
             final JSONObject preference = preferenceQueryService.getPreference();
-
-            filler.fillBlogFooter(request, dataModel, preference);
-            filler.fillMinified(dataModel);
+            dataModelService.fillCommon(request, response, dataModel, preference);
+            dataModelService.fillMinified(dataModel);
         } catch (final ServiceException e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            try {
-                response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            } catch (final IOException ex) {
-                LOGGER.error(ex.getMessage());
-            }
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
         }
     }
 
     /**
-     * Kill browser (kill-browser.ftl) HTTP response renderer.
+     * Online visitor count refresher.
      *
-     * @author <a href="http://88250.b3log.org">Liang Ding</a>
-     * @version 1.0.0.0, Sep 18, 2011
-     * @since 0.3.1
+     * @param context the specified context
      */
-    private static final class KillBrowserRenderer extends AbstractFreeMarkerRenderer {
+    @RequestProcessing(value = "/console/stat/onlineVisitorRefresh", method = HTTPRequestMethod.GET)
+    public void onlineVisitorCountRefresher(final HTTPRequestContext context) {
+        context.setRenderer(new DoNothingRenderer());
 
-        /**
-         * Logger.
-         */
-        private static final Logger LOGGER = Logger.getLogger(KillBrowserRenderer.class);
+        StatisticMgmtService.removeExpiredOnlineVisitor();
+    }
 
-        @Override
-        public void render(final HTTPRequestContext context) {
-            final HttpServletResponse response = context.getResponse();
+    /**
+     * Gets the request page number from the specified request URI.
+     *
+     * @param requestURI the specified request URI
+     * @return page number, returns {@code -1} if the specified request URI can not convert to an number
+     */
+    private static int getCurrentPageNum(final String requestURI) {
+        final String pageNumString = StringUtils.substringAfterLast(requestURI, "/");
 
-            response.setContentType("text/html");
-            response.setCharacterEncoding("UTF-8");
-
-            try {
-                final Template template = ConsoleRenderer.TEMPLATE_CFG.getTemplate("kill-browser.ftl");
-
-                final PrintWriter writer = response.getWriter();
-
-                final StringWriter stringWriter = new StringWriter();
-
-                template.setOutputEncoding("UTF-8");
-                template.process(getDataModel(), stringWriter);
-
-                final String pageContent = stringWriter.toString();
-
-                writer.write(pageContent);
-                writer.flush();
-                writer.close();
-            } catch (final Exception e) {
-                try {
-                    response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                } catch (final IOException ex) {
-                    LOGGER.log(Level.ERROR, "Can not sned error 500!", ex);
-                }
-            }
-        }
-
-        @Override
-        protected void afterRender(final HTTPRequestContext context) throws Exception {
-            throw new UnsupportedOperationException("Not supported yet.");
-        }
-
-        @Override
-        protected void beforeRender(final HTTPRequestContext context) throws Exception {
-            throw new UnsupportedOperationException("Not supported yet.");
-        }
+        return Requests.getCurrentPageNum(pageNumString);
     }
 }

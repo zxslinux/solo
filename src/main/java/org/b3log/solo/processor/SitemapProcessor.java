@@ -1,17 +1,19 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.processor;
 
@@ -19,7 +21,7 @@ import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.inject.Inject;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.repository.FilterOperator;
@@ -31,6 +33,7 @@ import org.b3log.latke.servlet.HTTPRequestMethod;
 import org.b3log.latke.servlet.annotation.RequestProcessing;
 import org.b3log.latke.servlet.annotation.RequestProcessor;
 import org.b3log.latke.servlet.renderer.TextXMLRenderer;
+import org.b3log.latke.util.XMLs;
 import org.b3log.solo.model.ArchiveDate;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Page;
@@ -38,23 +41,21 @@ import org.b3log.solo.model.Tag;
 import org.b3log.solo.model.sitemap.Sitemap;
 import org.b3log.solo.model.sitemap.URL;
 import org.b3log.solo.repository.ArchiveDateRepository;
+import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.repository.TagRepository;
-import org.b3log.solo.repository.impl.ArticleRepositoryImpl;
 import org.b3log.solo.service.PreferenceQueryService;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
 import java.net.URLEncoder;
-import java.util.Date;
 
 /**
- * Site map (sitemap) processor.
+ * Sitemap processor.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.0.1.0, Mar 10, 2018
+ * @version 1.0.2.4, Sep 26, 2018
  * @since 0.3.1
  */
 @RequestProcessor
@@ -75,7 +76,7 @@ public class SitemapProcessor {
      * Article repository.
      */
     @Inject
-    private ArticleRepositoryImpl articleRepository;
+    private ArticleRepository articleRepository;
 
     /**
      * Page repository.
@@ -99,9 +100,10 @@ public class SitemapProcessor {
      * Returns the sitemap.
      *
      * @param context the specified context
+     * @throws Exception exception
      */
     @RequestProcessing(value = "/sitemap.xml", method = HTTPRequestMethod.GET)
-    public void sitemap(final HTTPRequestContext context) {
+    public void sitemap(final HTTPRequestContext context) throws Exception {
         final TextXMLRenderer renderer = new TextXMLRenderer();
 
         context.setRenderer(renderer);
@@ -115,18 +117,14 @@ public class SitemapProcessor {
             addArchives(sitemap);
 
             LOGGER.log(Level.INFO, "Generating sitemap....");
-            final String content = sitemap.toString();
-
+            String content = sitemap.toString();
+            content = XMLs.format(content);
             LOGGER.log(Level.INFO, "Generated sitemap");
             renderer.setContent(content);
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Get blog article feed error", e);
+            LOGGER.log(Level.ERROR, "Generates sitemap failed", e);
 
-            try {
-                context.getResponse().sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
-            } catch (final IOException ex) {
-                throw new RuntimeException(ex);
-            }
+            context.getResponse().sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
         }
     }
 
@@ -139,9 +137,9 @@ public class SitemapProcessor {
     private void addArticles(final Sitemap sitemap) throws Exception {
         final Query query = new Query().setCurrentPageNum(1).
                 setFilter(new PropertyFilter(Article.ARTICLE_IS_PUBLISHED, FilterOperator.EQUAL, true)).
-                addSort(Article.ARTICLE_CREATE_DATE, SortDirection.DESCENDING).
+                addSort(Article.ARTICLE_CREATED, SortDirection.DESCENDING).
                 addProjection(Article.ARTICLE_PERMALINK, String.class).
-                addProjection(Article.ARTICLE_UPDATE_DATE, Date.class);
+                addProjection(Article.ARTICLE_UPDATED, Long.class);
         final JSONObject articleResult = articleRepository.get(query);
         final JSONArray articles = articleResult.getJSONArray(Keys.RESULTS);
 
@@ -151,8 +149,8 @@ public class SitemapProcessor {
 
             final URL url = new URL();
             url.setLoc(StringEscapeUtils.escapeXml(Latkes.getServePath() + permalink));
-            final Date updateDate = (Date) article.get(Article.ARTICLE_UPDATE_DATE);
-            final String lastMod = DateFormatUtils.ISO_DATETIME_TIME_ZONE_FORMAT.format(updateDate);
+            final long updated = article.getLong(Article.ARTICLE_UPDATED);
+            final String lastMod = DateFormatUtils.ISO_DATETIME_TIME_ZONE_FORMAT.format(updated);
             url.setLastMod(lastMod);
 
             sitemap.addURL(url);

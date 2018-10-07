@@ -1,33 +1,35 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.service;
 
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
-import org.b3log.latke.ioc.inject.Inject;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.Pagination;
+import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.SortDirection;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Paginator;
-import org.b3log.latke.util.Strings;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Comment;
 import org.b3log.solo.model.Common;
@@ -37,13 +39,12 @@ import org.b3log.solo.repository.CommentRepository;
 import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.util.Emotions;
 import org.b3log.solo.util.Markdowns;
-import org.b3log.solo.util.Thumbnails;
+import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
 
-import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -52,7 +53,7 @@ import java.util.List;
  * Comment query service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.3.2.0, Aug 31, 2017
+ * @version 1.3.2.3, Oct 7, 2018
  * @since 0.3.5
  */
 @Service
@@ -88,23 +89,26 @@ public class CommentQueryService {
     private PageRepository pageRepository;
 
     /**
-     * Can the current user access a comment specified by the given comment id?
+     * Can the specified user access a comment specified by the given comment id?
      *
      * @param commentId the given comment id
-     * @param request   the specified request
+     * @param user      the specified user
      * @return {@code true} if the current user can access the comment, {@code false} otherwise
      * @throws Exception exception
      */
-    public boolean canAccessComment(final String commentId, final HttpServletRequest request) throws Exception {
-        if (Strings.isEmptyOrNull(commentId)) {
+    public boolean canAccessComment(final String commentId, final JSONObject user) throws Exception {
+        if (StringUtils.isBlank(commentId)) {
             return false;
         }
 
-        if (userQueryService.isAdminLoggedIn(request)) {
+        if (null == user) {
+            return false;
+        }
+
+        if (Role.ADMIN_ROLE.equals(user.optString(User.USER_ROLE))) {
             return true;
         }
 
-        // Here, you are not admin
         final JSONObject comment = commentRepository.get(commentId);
         if (null == comment) {
             return false;
@@ -122,9 +126,9 @@ public class CommentQueryService {
             return false;
         }
 
-        final String currentUserEmail = userQueryService.getCurrentUser(request).getString(User.USER_EMAIL);
+        final String currentUserId = user.getString(Keys.OBJECT_ID);
 
-        return article.getString(Article.ARTICLE_AUTHOR_EMAIL).equals(currentUserEmail);
+        return article.getString(Article.ARTICLE_AUTHOR_ID).equals(currentUserId);
     }
 
     /**
@@ -162,8 +166,8 @@ public class CommentQueryService {
             final int pageSize = requestJSONObject.getInt(Pagination.PAGINATION_PAGE_SIZE);
             final int windowSize = requestJSONObject.getInt(Pagination.PAGINATION_WINDOW_SIZE);
 
-            final Query query = new Query().setCurrentPageNum(currentPageNum).setPageSize(pageSize).addSort(Comment.COMMENT_DATE,
-                    SortDirection.DESCENDING);
+            final Query query = new Query().setCurrentPageNum(currentPageNum).setPageSize(pageSize).
+                    addSort(Comment.COMMENT_CREATED, SortDirection.DESCENDING);
             final JSONObject result = commentRepository.get(query);
             final JSONArray comments = result.getJSONArray(Keys.RESULTS);
 
@@ -195,8 +199,12 @@ public class CommentQueryService {
                 commentContent = Jsoup.clean(commentContent, Whitelist.relaxed());
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
 
-                comment.put(Comment.COMMENT_TIME, ((Date) comment.get(Comment.COMMENT_DATE)).getTime());
-                comment.remove(Comment.COMMENT_DATE);
+                String commentName = comment.optString(Comment.COMMENT_NAME);
+                commentName = Jsoup.clean(commentName, Whitelist.none());
+                comment.put(Comment.COMMENT_NAME, commentName);
+
+                comment.put(Comment.COMMENT_TIME, comment.optLong(Comment.COMMENT_CREATED));
+                comment.remove(Comment.COMMENT_CREATED);
             }
 
             final int pageCount = result.getJSONObject(Pagination.PAGINATION).getInt(Pagination.PAGINATION_PAGE_COUNT);
@@ -226,13 +234,12 @@ public class CommentQueryService {
      */
     public List<JSONObject> getComments(final String onId) throws ServiceException {
         try {
-            final List<JSONObject> ret = new ArrayList<JSONObject>();
-
+            final List<JSONObject> ret = new ArrayList<>();
             final List<JSONObject> comments = commentRepository.getComments(onId, 1, Integer.MAX_VALUE);
-
             for (final JSONObject comment : comments) {
-                comment.put(Comment.COMMENT_TIME, ((Date) comment.get(Comment.COMMENT_DATE)).getTime());
-                comment.put("commentDate2", comment.get(Comment.COMMENT_DATE)); // 1.9.0 向后兼容
+                comment.put(Comment.COMMENT_TIME, comment.optLong(Comment.COMMENT_CREATED));
+                comment.put(Comment.COMMENT_T_DATE, new Date(comment.optLong(Comment.COMMENT_CREATED)));
+                comment.put("commentDate2", new Date(comment.optLong(Comment.COMMENT_CREATED))); // 1.9.0 向后兼容
                 comment.put(Comment.COMMENT_NAME, comment.getString(Comment.COMMENT_NAME));
                 String url = comment.getString(Comment.COMMENT_URL);
                 if (StringUtils.contains(url, "<")) { // legacy issue https://github.com/b3log/solo/issues/12091
@@ -241,14 +248,13 @@ public class CommentQueryService {
                 comment.put(Comment.COMMENT_URL, url);
                 comment.put(Common.IS_REPLY, false); // Assumes this comment is not a reply
 
-                final String email = comment.optString(Comment.COMMENT_EMAIL);
-
                 final String thumbnailURL = comment.optString(Comment.COMMENT_THUMBNAIL_URL);
-                if (Strings.isEmptyOrNull(thumbnailURL)) {
-                    comment.put(Comment.COMMENT_THUMBNAIL_URL, Thumbnails.getGravatarURL(email, "128"));
+                if (StringUtils.isBlank(thumbnailURL)) {
+                    final String email = comment.optString(Comment.COMMENT_EMAIL);
+                    comment.put(Comment.COMMENT_THUMBNAIL_URL, Solos.getGravatarURL(email, "128"));
                 }
 
-                if (!Strings.isEmptyOrNull(comment.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID))) {
+                if (StringUtils.isNotBlank(comment.optString(Comment.COMMENT_ORIGINAL_COMMENT_ID))) {
                     // This comment is a reply
                     comment.put(Common.IS_REPLY, true);
                 }
@@ -258,6 +264,10 @@ public class CommentQueryService {
                 commentContent = Markdowns.toHTML(commentContent);
                 commentContent = Jsoup.clean(commentContent, Whitelist.relaxed());
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
+
+                String commentName = comment.optString(Comment.COMMENT_NAME);
+                commentName = Jsoup.clean(commentName, Whitelist.none());
+                comment.put(Comment.COMMENT_NAME, commentName);
 
                 ret.add(comment);
             }

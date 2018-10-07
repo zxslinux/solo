@@ -1,27 +1,30 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.service;
 
+import jodd.http.HttpRequest;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.time.DateFormatUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
-import org.b3log.latke.ioc.inject.Inject;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.mail.MailService;
@@ -31,10 +34,6 @@ import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.urlfetch.HTTPRequest;
-import org.b3log.latke.urlfetch.HTTPResponse;
-import org.b3log.latke.urlfetch.URLFetchService;
-import org.b3log.latke.urlfetch.URLFetchServiceFactory;
 import org.b3log.latke.util.Ids;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.event.EventTypes;
@@ -43,14 +42,15 @@ import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CommentRepository;
 import org.b3log.solo.repository.PageRepository;
 import org.b3log.solo.repository.UserRepository;
-import org.b3log.solo.util.*;
+import org.b3log.solo.util.Emotions;
+import org.b3log.solo.util.Markdowns;
+import org.b3log.solo.util.Solos;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.safety.Whitelist;
 
 import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
 import java.net.URL;
 import java.util.Date;
 
@@ -58,7 +58,7 @@ import java.util.Date;
  * Comment management service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.3.3.0, Aug 31, 2017
+ * @version 1.3.3.3, Oct 7, 2018
  * @since 0.3.5
  */
 @Service
@@ -105,11 +105,6 @@ public class CommentMgmtService {
      */
     @Inject
     private static EventManager eventManager;
-
-    /**
-     * URL fetch service.
-     */
-    private static URLFetchService urlFetchService = URLFetchServiceFactory.getURLFetchService();
 
     /**
      * Article management service.
@@ -172,14 +167,13 @@ public class CommentMgmtService {
      * @param comment         the specified comment
      * @param originalComment original comment, if not exists, set it as {@code null}
      * @param preference      the specified preference
-     * @throws IOException   io exception
-     * @throws JSONException json exception
+     * @throws Exception exception
      */
     public void sendNotificationMail(final JSONObject articleOrPage,
                                      final JSONObject comment,
                                      final JSONObject originalComment,
-                                     final JSONObject preference) throws IOException, JSONException {
-        if (!Mails.isConfigured()) {
+                                     final JSONObject preference) throws Exception {
+        if (!Solos.isConfigured()) {
             return;
         }
 
@@ -195,7 +189,7 @@ public class CommentMgmtService {
             return;
         }
 
-        if (Latkes.getServePath().contains("localhost")) {
+        if (Latkes.getServePath().contains("localhost") || Strings.isIPv4(Latkes.getServePath())) {
             LOGGER.log(Level.INFO, "Solo runs on local server, so should not send mail");
 
             return;
@@ -213,7 +207,7 @@ public class CommentMgmtService {
         final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
         boolean isArticle = true;
         String title = articleOrPage.optString(Article.ARTICLE_TITLE);
-        if (Strings.isEmptyOrNull(title)) {
+        if (StringUtils.isBlank(title)) {
             title = articleOrPage.getString(Page.PAGE_TITLE);
             isArticle = false;
         }
@@ -260,7 +254,7 @@ public class CommentMgmtService {
     /**
      * Checks the specified comment adding request.
      * <p>
-     * XSS process (name, content) in this method.
+     * XSS process (name) in this method.
      * </p>
      *
      * @param requestJSONObject the specified comment adding request, for example,
@@ -272,7 +266,7 @@ public class CommentMgmtService {
      *                          "commentURL": "",
      *                          "commentContent": "",
      *                          }
-     * @return check result, for example,      <pre>
+     * @return check result, for example, <pre>
      * {
      *     "sc": boolean,
      *     "msg": "" // Exists if "sc" equals to false
@@ -314,7 +308,6 @@ public class CommentMgmtService {
             }
 
             String commentName = requestJSONObject.getString(Comment.COMMENT_NAME);
-
             if (MAX_COMMENT_NAME_LENGTH < commentName.length() || MIN_COMMENT_NAME_LENGTH > commentName.length()) {
                 LOGGER.log(Level.WARN, "Comment name is too long[{0}]", commentName);
                 ret.put(Keys.MSG, langPropsService.get("nameTooLongLabel"));
@@ -351,10 +344,6 @@ public class CommentMgmtService {
 
             ret.put(Keys.STATUS_CODE, true);
 
-            // name XSS process
-            commentName = Jsoup.clean(commentName, Whitelist.none());
-            requestJSONObject.put(Comment.COMMENT_NAME, commentName);
-
             commentContent = Emotions.toAliases(commentContent);
             requestJSONObject.put(Comment.COMMENT_CONTENT, commentContent);
 
@@ -388,8 +377,8 @@ public class CommentMgmtService {
      *     "commentOriginalCommentName": "" // optional, corresponding to argument "commentOriginalCommentId"
      *     "commentThumbnailURL": "",
      *     "commentSharpURL": "",
-     *     "commentContent": "", // processed XSS HTML
-     *     "commentName": "", // processed XSS
+     *     "commentContent": "",
+     *     "commentName": "",
      *     "commentURL": "", // optional
      *     "isReply": boolean,
      *     "page": {},
@@ -432,14 +421,14 @@ public class CommentMgmtService {
             final JSONObject preference = preferenceQueryService.getPreference();
             final Date date = new Date();
 
-            comment.put(Comment.COMMENT_DATE, date);
-            ret.put(Comment.COMMENT_DATE, DateFormatUtils.format(date, "yyyy-MM-dd HH:mm:ss"));
+            comment.put(Comment.COMMENT_CREATED, date.getTime());
+            ret.put(Comment.COMMENT_T_DATE, DateFormatUtils.format(date, "yyyy-MM-dd HH:mm:ss"));
             ret.put("commentDate2", date);
 
             ret.put(Common.COMMENTABLE, preference.getBoolean(Option.ID_C_COMMENTABLE) && page.getBoolean(Page.PAGE_COMMENTABLE));
             ret.put(Common.PERMALINK, page.getString(Page.PAGE_PERMALINK));
 
-            if (!Strings.isEmptyOrNull(originalCommentId)) {
+            if (StringUtils.isNotBlank(originalCommentId)) {
                 originalComment = commentRepository.get(originalCommentId);
                 if (null != originalComment) {
                     comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, originalCommentId);
@@ -463,8 +452,7 @@ public class CommentMgmtService {
 
             ret.put(Keys.OBJECT_ID, commentId);
             // Save comment sharp URL
-            final String commentSharpURL = Comments.getCommentSharpURLForPage(page, commentId);
-
+            final String commentSharpURL = Comment.getCommentSharpURLForPage(page, commentId);
             ret.put(Comment.COMMENT_NAME, commentName);
             ret.put(Comment.COMMENT_CONTENT, commentContent);
             ret.put(Comment.COMMENT_URL, commentURL);
@@ -489,7 +477,7 @@ public class CommentMgmtService {
 
             eventData.put(Comment.COMMENT, comment);
             eventData.put(Page.PAGE, page);
-            eventManager.fireEventSynchronously(new Event<JSONObject>(EventTypes.ADD_COMMENT_TO_PAGE, eventData));
+            eventManager.fireEventSynchronously(new Event<>(EventTypes.ADD_COMMENT_TO_PAGE, eventData));
 
             transaction.commit();
         } catch (final Exception e) {
@@ -522,8 +510,8 @@ public class CommentMgmtService {
      *     "commentOriginalCommentName": "" // optional, corresponding to argument "commentOriginalCommentId"
      *     "commentThumbnailURL": "",
      *     "commentSharpURL": "",
-     *     "commentContent": "", // processed XSS HTML
-     *     "commentName": "", // processed XSS
+     *     "commentContent": "",
+     *     "commentName": "",
      *     "commentURL": "", // optional
      *     "isReply": boolean,
      *     "article": {},
@@ -568,8 +556,8 @@ public class CommentMgmtService {
             final JSONObject preference = preferenceQueryService.getPreference();
             final Date date = new Date();
 
-            comment.put(Comment.COMMENT_DATE, date);
-            ret.put(Comment.COMMENT_DATE, DateFormatUtils.format(date, "yyyy-MM-dd HH:mm:ss"));
+            comment.put(Comment.COMMENT_CREATED, date.getTime());
+            ret.put(Comment.COMMENT_T_DATE, DateFormatUtils.format(date, "yyyy-MM-dd HH:mm:ss"));
             ret.put("commentDate2", date);
 
             ret.put(Common.COMMENTABLE, preference.getBoolean(Option.ID_C_COMMENTABLE) && article.getBoolean(Article.ARTICLE_COMMENTABLE));
@@ -582,7 +570,7 @@ public class CommentMgmtService {
             ret.put(Comment.COMMENT_CONTENT, cmtContent);
             ret.put(Comment.COMMENT_URL, commentURL);
 
-            if (!Strings.isEmptyOrNull(originalCommentId)) {
+            if (StringUtils.isNotBlank(originalCommentId)) {
                 originalComment = commentRepository.get(originalCommentId);
                 if (null != originalComment) {
                     comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, originalCommentId);
@@ -606,8 +594,7 @@ public class CommentMgmtService {
 
             comment.put(Keys.OBJECT_ID, commentId);
             ret.put(Keys.OBJECT_ID, commentId);
-            final String commentSharpURL = Comments.getCommentSharpURLForArticle(article, commentId);
-
+            final String commentSharpURL = Comment.getCommentSharpURLForArticle(article, commentId);
             comment.put(Comment.COMMENT_SHARP_URL, commentSharpURL);
             ret.put(Comment.COMMENT_SHARP_URL, commentSharpURL);
 
@@ -628,7 +615,7 @@ public class CommentMgmtService {
 
             eventData.put(Comment.COMMENT, comment);
             eventData.put(Article.ARTICLE, article);
-            eventManager.fireEventSynchronously(new Event<JSONObject>(EventTypes.ADD_COMMENT_TO_ARTICLE, eventData));
+            eventManager.fireEventSynchronously(new Event<>(EventTypes.ADD_COMMENT_TO_ARTICLE, eventData));
 
             transaction.commit();
         } catch (final Exception e) {
@@ -779,7 +766,7 @@ public class CommentMgmtService {
         final JSONObject user = userRepository.getByEmail(commentEmail);
         if (null != user) {
             final String avatar = user.optString(UserExt.USER_AVATAR);
-            if (!Strings.isEmptyOrNull(avatar)) {
+            if (StringUtils.isNotBlank(avatar)) {
                 comment.put(Comment.COMMENT_THUMBNAIL_URL, avatar);
 
                 return;
@@ -787,19 +774,13 @@ public class CommentMgmtService {
         }
 
         // 2. Gravatar
-        String thumbnailURL = Thumbnails.getGravatarURL(commentEmail.toLowerCase(), "128");
+        String thumbnailURL = Solos.getGravatarURL(commentEmail.toLowerCase(), "128");
         final URL gravatarURL = new URL(thumbnailURL);
 
         int statusCode = HttpServletResponse.SC_OK;
-
         try {
-            final HTTPRequest request = new HTTPRequest();
-
-            request.setURL(gravatarURL);
-            final HTTPResponse response = urlFetchService.fetch(request);
-
-            statusCode = response.getResponseCode();
-        } catch (final IOException e) {
+            statusCode = HttpRequest.get(thumbnailURL).header("User-Agent", Solos.USER_AGENT).send().statusCode();
+        } catch (final Exception e) {
             LOGGER.log(Level.DEBUG, "Can not fetch thumbnail from Gravatar [commentEmail={0}]", commentEmail);
         } finally {
             if (HttpServletResponse.SC_OK != statusCode) {

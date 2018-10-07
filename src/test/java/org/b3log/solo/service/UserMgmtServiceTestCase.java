@@ -1,26 +1,28 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.service;
 
 import junit.framework.Assert;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.util.MD5;
 import org.b3log.solo.AbstractTestCase;
 import org.json.JSONObject;
 import org.testng.annotations.Test;
@@ -30,7 +32,7 @@ import org.testng.annotations.Test;
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="https://github.com/nanolikeyou">nanolikeyou</a>
- * @version 1.0.0.4, Aug 14, 2017
+ * @version 1.0.0.5, Aug 2, 2018
  */
 @Test(suiteName = "service")
 public class UserMgmtServiceTestCase extends AbstractTestCase {
@@ -89,7 +91,7 @@ public class UserMgmtServiceTestCase extends AbstractTestCase {
         userMgmtService.updateUser(requestJSONObject);
 
         Assert.assertEquals(getUserQueryService().getUser(id).getJSONObject(
-                User.USER).getString(User.USER_PASSWORD), MD5.hash("pass2"));
+                User.USER).getString(User.USER_PASSWORD), DigestUtils.md5Hex("pass2"));
     }
 
     /**
@@ -138,11 +140,11 @@ public class UserMgmtServiceTestCase extends AbstractTestCase {
     public void removeUser() throws Exception {
         final UserMgmtService userMgmtService = getUserMgmtService();
 
-        final JSONObject user = getUserQueryService().getUserByEmail("test1@gmail.com");
+        final JSONObject user = getUserQueryService().getUserByEmailOrUserName("test1@gmail.com");
         Assert.assertNotNull(user);
 
         userMgmtService.removeUser(user.getString(Keys.OBJECT_ID));
 
-        Assert.assertNull(getUserQueryService().getUserByEmail("test1@gmail.com"));
+        Assert.assertNull(getUserQueryService().getUserByEmailOrUserName("test1@gmail.com"));
     }
 }

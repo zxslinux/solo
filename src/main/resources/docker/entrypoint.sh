@@ -1,4 +1,22 @@
 #!/bin/bash
+#
+# Solo - A small and beautiful blogging system written in Java.
+# Copyright (c) 2010-2018, b3log.org & hacpai.com
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
 
 ## author: tomaer.Ma <i@tomaer.com>
 
@@ -20,8 +38,9 @@ if [ ! -f "/opt/b3log/solo/WEB-INF/classes/local.properties" ]; then
     cat /opt/b3log/tmp/latke.properties | sed \
      -e "s|{{SERVER_SCHMEA}}|${SERVER_SCHMEA:-http}|g" \
      -e "s|{{SERVER_NAME}}|${SERVER_NAME:-localhost}|g" \
+     -e "s|{{SERVER_PORT}}|${SERVER_PORT:-8080}|g" \
     > /opt/b3log/solo/WEB-INF/classes/latke.properties
-	
+
     cat /opt/b3log/tmp/mail.properties | sed \
      -e "s|{{EMAIL_ADDRESS}}|${EMAIL_ADDRESS}|g" \
      -e "s|{{EMAIL_PASSWORD}}|${EMAIL_PASSWORD}|g" \

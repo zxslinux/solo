@@ -1,31 +1,32 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo;
 
 import org.b3log.latke.Latkes;
-import org.b3log.latke.cache.CacheFactory;
-import org.b3log.latke.ioc.LatkeBeanManager;
-import org.b3log.latke.ioc.Lifecycle;
-import org.b3log.latke.ioc.config.Discoverer;
+import org.b3log.latke.ioc.BeanManager;
+import org.b3log.latke.ioc.Discoverer;
 import org.b3log.latke.repository.jdbc.util.Connections;
 import org.b3log.latke.repository.jdbc.util.JdbcRepositories;
-import org.b3log.solo.api.metaweblog.MetaWeblogAPI;
+import org.b3log.solo.api.MetaWeblogAPI;
+import org.b3log.solo.cache.*;
 import org.b3log.solo.repository.*;
-import org.b3log.solo.repository.impl.*;
 import org.b3log.solo.service.*;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 
 import java.sql.Connection;
@@ -36,15 +37,14 @@ import java.util.Locale;
  * Abstract test case.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 2.3.0.10, Sep 6, 2017
- * @see #beforeClass()
+ * @version 2.3.0.11, Sep 25, 2018
  */
 public abstract class AbstractTestCase {
 
     /**
      * Bean manager.
      */
-    private LatkeBeanManager beanManager;
+    private BeanManager beanManager;
 
     /**
      * Before class.
@@ -61,8 +61,8 @@ public abstract class AbstractTestCase {
         Latkes.setLocale(Locale.SIMPLIFIED_CHINESE);
 
         final Collection<Class<?>> classes = Discoverer.discover("org.b3log.solo");
-        Lifecycle.startApplication(classes);
-        beanManager = Lifecycle.getBeanManager();
+        BeanManager.start(classes);
+        beanManager = BeanManager.getInstance();
 
         final Connection connection = Connections.getConnection();
         connection.createStatement().execute("DROP ALL OBJECTS");
@@ -76,12 +76,21 @@ public abstract class AbstractTestCase {
      * <ul>
      * <li>Clears all caches</li>
      * </ul>
-     *
-     * @throws Exception
      */
-    @BeforeClass
-    public void afterClass() throws Exception {
-        CacheFactory.clearAll();
+    @AfterClass
+    public void afterClass() {
+        final ArticleCache articleCache = beanManager.getReference(ArticleCache.class);
+        articleCache.clear();
+        final CommentCache commentCache = beanManager.getReference(CommentCache.class);
+        commentCache.clear();
+        final OptionCache optionCache = beanManager.getReference(OptionCache.class);
+        optionCache.clear();
+        final PageCache pageCache = beanManager.getReference(PageCache.class);
+        pageCache.clear();
+        final StatisticCache statisticCache = beanManager.getReference(StatisticCache.class);
+        statisticCache.clear();
+        final UserCache userCache = beanManager.getReference(UserCache.class);
+        userCache.clear();
     }
 
     /**
@@ -90,7 +99,7 @@ public abstract class AbstractTestCase {
      * @return category-tag repository
      */
     public CategoryTagRepository getCategoryTagRepository() {
-        return beanManager.getReference(CategoryTagRepositoryImpl.class);
+        return beanManager.getReference(CategoryTagRepository.class);
     }
 
     /**
@@ -99,7 +108,7 @@ public abstract class AbstractTestCase {
      * @return category repository
      */
     public CategoryRepository getCategoryRepository() {
-        return beanManager.getReference(CategoryRepositoryImpl.class);
+        return beanManager.getReference(CategoryRepository.class);
     }
 
     /**
@@ -108,7 +117,7 @@ public abstract class AbstractTestCase {
      * @return user repository
      */
     public UserRepository getUserRepository() {
-        return beanManager.getReference(UserRepositoryImpl.class);
+        return beanManager.getReference(UserRepository.class);
     }
 
     /**
@@ -117,7 +126,7 @@ public abstract class AbstractTestCase {
      * @return link repository
      */
     public LinkRepository getLinkRepository() {
-        return beanManager.getReference(LinkRepositoryImpl.class);
+        return beanManager.getReference(LinkRepository.class);
     }
 
     /**
@@ -126,7 +135,7 @@ public abstract class AbstractTestCase {
      * @return article repository
      */
     public ArticleRepository getArticleRepository() {
-        return beanManager.getReference(ArticleRepositoryImpl.class);
+        return beanManager.getReference(ArticleRepository.class);
     }
 
     /**
@@ -135,7 +144,7 @@ public abstract class AbstractTestCase {
      * @return tag repository
      */
     public TagRepository getTagRepository() {
-        return beanManager.getReference(TagRepositoryImpl.class);
+        return beanManager.getReference(TagRepository.class);
     }
 
     /**
@@ -144,7 +153,7 @@ public abstract class AbstractTestCase {
      * @return tag-article repository
      */
     public TagArticleRepository getTagArticleRepository() {
-        return beanManager.getReference(TagArticleRepositoryImpl.class);
+        return beanManager.getReference(TagArticleRepository.class);
     }
 
     /**
@@ -153,7 +162,7 @@ public abstract class AbstractTestCase {
      * @return page repository
      */
     public PageRepository getPageRepository() {
-        return beanManager.getReference(PageRepositoryImpl.class);
+        return beanManager.getReference(PageRepository.class);
     }
 
     /**
@@ -162,7 +171,7 @@ public abstract class AbstractTestCase {
      * @return comment repository
      */
     public CommentRepository getCommentRepository() {
-        return beanManager.getReference(CommentRepositoryImpl.class);
+        return beanManager.getReference(CommentRepository.class);
     }
 
     /**
@@ -171,7 +180,7 @@ public abstract class AbstractTestCase {
      * @return archive date repository
      */
     public ArchiveDateRepository getArchiveDateRepository() {
-        return beanManager.getReference(ArchiveDateRepositoryImpl.class);
+        return beanManager.getReference(ArchiveDateRepository.class);
     }
 
     /**
@@ -180,7 +189,7 @@ public abstract class AbstractTestCase {
      * @return archive date article repository
      */
     public ArchiveDateArticleRepository getArchiveDateArticleRepository() {
-        return beanManager.getReference(ArchiveDateArticleRepositoryImpl.class);
+        return beanManager.getReference(ArchiveDateArticleRepository.class);
     }
 
     /**
@@ -189,7 +198,7 @@ public abstract class AbstractTestCase {
      * @return plugin repository
      */
     public PluginRepository getPluginRepository() {
-        return beanManager.getReference(PluginRepositoryImpl.class);
+        return beanManager.getReference(PluginRepository.class);
     }
 
     /**
@@ -198,7 +207,7 @@ public abstract class AbstractTestCase {
      * @return option repository
      */
     public OptionRepository getOptionRepository() {
-        return beanManager.getReference(OptionRepositoryImpl.class);
+        return beanManager.getReference(OptionRepository.class);
     }
 
     /**

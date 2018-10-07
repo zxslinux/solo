@@ -1,23 +1,26 @@
 /*
+ * Solo - A small and beautiful blogging system written in Java.
  * Copyright (c) 2010-2018, b3log.org & hacpai.com
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.b3log.solo.service;
 
+import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
-import org.b3log.latke.ioc.inject.Inject;
+import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.mail.MailService;
@@ -25,34 +28,36 @@ import org.b3log.latke.mail.MailServiceFactory;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.Query;
 import org.b3log.latke.repository.Transaction;
+import org.b3log.latke.repository.jdbc.JdbcRepository;
 import org.b3log.latke.repository.jdbc.util.Connections;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.cache.ArticleCache;
+import org.b3log.solo.cache.CommentCache;
 import org.b3log.solo.model.Article;
+import org.b3log.solo.model.Comment;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.UserExt;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.CommentRepository;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.repository.UserRepository;
-import org.b3log.solo.util.Mails;
-import org.b3log.solo.util.Thumbnails;
+import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.IOException;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Date;
+import java.util.List;
 
 /**
  * Upgrade service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="mailto:dongxu.wang@acm.org">Dongxu Wang</a>
- * @version 1.2.0.24, Apr 17, 2018
+ * @version 1.2.0.29, Sep 16, 2018
  * @since 1.2.0
  */
 @Service
@@ -76,7 +81,7 @@ public class UpgradeService {
     /**
      * Old version.
      */
-    private static final String FROM_VER = "2.7.0";
+    private static final String FROM_VER = "2.9.3";
 
     /**
      * New version.
@@ -126,6 +131,18 @@ public class UpgradeService {
     private LangPropsService langPropsService;
 
     /**
+     * Article cache.
+     */
+    @Inject
+    private ArticleCache articleCache;
+
+    /**
+     * Comment cache.
+     */
+    @Inject
+    private CommentCache commentCache;
+
+    /**
      * Upgrades if need.
      */
     public void upgrade() {
@@ -169,139 +186,137 @@ public class UpgradeService {
     private void perform() throws Exception {
         LOGGER.log(Level.INFO, "Upgrading from version [{0}] to version [{1}]....", FROM_VER, TO_VER);
 
-        final Transaction transaction = optionRepository.beginTransaction();
         try {
+            alterTables();
+            JdbcRepository.dispose(); // avoid to metadata lock
+            upgradeArticles();
+            upgradeComments();
+            JdbcRepository.dispose(); // avoid to metadata lock
+            dropColumns();
+            JdbcRepository.dispose(); // avoid to metadata lock
+
+            articleCache.clear();
+            commentCache.clear();
+
+            final Transaction transaction = optionRepository.beginTransaction();
             final JSONObject versionOpt = optionRepository.get(Option.ID_C_VERSION);
             versionOpt.put(Option.OPTION_VALUE, TO_VER);
             optionRepository.update(Option.ID_C_VERSION, versionOpt);
 
             transaction.commit();
         } catch (final Exception e) {
-            if (null != transaction && transaction.isActive()) {
-                transaction.rollback();
-            }
-
             LOGGER.log(Level.ERROR, "Upgrade failed!", e);
+
             throw new Exception("Upgrade failed from version [" + FROM_VER + "] to version [" + TO_VER + ']');
         }
 
         LOGGER.log(Level.INFO, "Upgraded from version [{0}] to version [{1}] successfully :-)", FROM_VER, TO_VER);
     }
 
-    /**
-     * Alters database tables.
-     *
-     * @throws Exception exception
-     */
     private void alterTables() throws Exception {
         final Connection connection = Connections.getConnection();
         final Statement statement = connection.createStatement();
 
         final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
-        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "page` ADD `pageIcon` VARCHAR(255) NOT NULL;");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "archiveDate` RENAME TO `" + tablePrefix + "archivedate1`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "archivedate1` RENAME TO `" + tablePrefix + "archivedate`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "archiveDate_article` RENAME TO `" + tablePrefix + "archivedate_article1`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "archivedate_article1` RENAME TO `" + tablePrefix + "archivedate_article`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` ADD `articleAuthorId` VARCHAR(19) DEFAULT '' NOT NULL");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` ADD `articleCreated` BIGINT DEFAULT 0 NOT NULL");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` ADD `articleUpdated` BIGINT DEFAULT 0 NOT NULL");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "comment` ADD `commentCreated` BIGINT DEFAULT 0 NOT NULL");
         statement.close();
         connection.commit();
         connection.close();
     }
 
-    /**
-     * Drops database tables.
-     *
-     * @throws Exception exception
-     */
+    private void dropColumns() throws Exception {
+        final Connection connection = Connections.getConnection();
+        final Statement statement = connection.createStatement();
+
+        final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` DROP COLUMN `articleAuthorEmail`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` DROP COLUMN `articleCreateDate`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "article` DROP COLUMN `articleUpdateDate`");
+        statement.executeUpdate("ALTER TABLE `" + tablePrefix + "comment` DROP COLUMN `commentDate`");
+        statement.close();
+        connection.commit();
+        connection.close();
+    }
+
     private void dropTables() throws Exception {
         final Connection connection = Connections.getConnection();
         final Statement statement = connection.createStatement();
 
         final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
-        statement.execute("DROP TABLE `" + tablePrefix + "statistic`;");
+        statement.execute("DROP TABLE `" + tablePrefix + "statistic`");
         statement.close();
         connection.commit();
         connection.close();
     }
 
-    /**
-     * Upgrade database tables.
-     *
-     * @throws Exception exception
-     */
-    private void upgradeTables() throws Exception {
-        final Connection connection = Connections.getConnection();
-        final Statement statement = connection.createStatement();
-
-        final String tablePrefix = Latkes.getLocalProperty("jdbc.tablePrefix") + "_";
-        statement.execute("CREATE TABLE `" + tablePrefix + "category` (\n" +
-                "  `oId` varchar(19) NOT NULL,\n" +
-                "  `categoryTitle` varchar(64) NOT NULL,\n" +
-                "  `categoryURI` varchar(32) NOT NULL,\n" +
-                "  `categoryDescription` text NOT NULL,\n" +
-                "  `categoryOrder` int(11) NOT NULL,\n" +
-                "  `categoryTagCnt` int(11) NOT NULL,\n" +
-                "  PRIMARY KEY (`oId`)\n" +
-                ") ENGINE=InnoDB DEFAULT CHARSET=utf8;");
-        statement.execute("CREATE TABLE `" + tablePrefix + "category_tag` (\n" +
-                "  `oId` varchar(19) NOT NULL,\n" +
-                "  `category_oId` varchar(19) NOT NULL,\n" +
-                "  `tag_oId` varchar(19) NOT NULL,\n" +
-                "  PRIMARY KEY (`oId`)\n" +
-                ") ENGINE=InnoDB DEFAULT CHARSET=utf8;");
-        statement.close();
-        connection.commit();
-        connection.close();
-    }
-
-    /**
-     * Upgrades users.
-     * <p>
-     * Password hashing.
-     * </p>
-     *
-     * @throws Exception exception
-     */
     private void upgradeUsers() throws Exception {
         final JSONArray users = userRepository.get(new Query()).getJSONArray(Keys.RESULTS);
 
         for (int i = 0; i < users.length(); i++) {
             final JSONObject user = users.getJSONObject(i);
             final String email = user.optString(User.USER_EMAIL);
-            user.put(UserExt.USER_AVATAR, Thumbnails.getGravatarURL(email, "128"));
+            user.put(UserExt.USER_AVATAR, Solos.getGravatarURL(email, "128"));
 
             userRepository.update(user.optString(Keys.OBJECT_ID), user);
             LOGGER.log(Level.INFO, "Updated user[email={0}]", email);
         }
     }
 
-    /**
-     * Upgrades articles.
-     *
-     * @throws Exception exception
-     */
     private void upgradeArticles() throws Exception {
-        LOGGER.log(Level.INFO, "Adds a property [articleEditorType] to each of articles");
-
-        final JSONArray articles = articleRepository.get(new Query()).getJSONArray(Keys.RESULTS);
-        if (articles.length() <= 0) {
+        final List<JSONObject> articles = articleRepository.getList(new Query().
+                addProjection(Keys.OBJECT_ID, String.class).
+                addProjection(Article.ARTICLE_T_CREATE_DATE, Date.class).
+                addProjection(Article.ARTICLE_T_UPDATE_DATE, Date.class).
+                addProjection(Article.ARTICLE_T_AUTHOR_EMAIL, String.class));
+        if (articles.isEmpty()) {
             LOGGER.log(Level.TRACE, "No articles");
+
             return;
         }
 
         Transaction transaction = null;
         try {
-            for (int i = 0; i < articles.length(); i++) {
+            for (int i = 0; i < articles.size(); i++) {
                 if (0 == i % STEP || !transaction.isActive()) {
                     transaction = userRepository.beginTransaction();
                 }
 
-                final JSONObject article = articles.getJSONObject(i);
-                final String articleId = article.optString(Keys.OBJECT_ID);
-                LOGGER.log(Level.INFO, "Found an article[id={0}]", articleId);
-                article.put(Article.ARTICLE_EDITOR_TYPE, "tinyMCE");
+                final String articleId = articles.get(i).optString(Keys.OBJECT_ID);
+                final JSONObject article = articleRepository.get(articleId);
+                String authorEmail = article.optString(Article.ARTICLE_T_AUTHOR_EMAIL);
+                if (StringUtils.isBlank(authorEmail)) { // H2
+                    authorEmail = article.optString(Article.ARTICLE_T_AUTHOR_EMAIL.toUpperCase());
+                }
+                JSONObject author = userRepository.getByEmail(authorEmail);
+                if (null == author) {
+                    author = userRepository.getAdmin();
+                }
+                article.put(Article.ARTICLE_AUTHOR_ID, author.optString(Keys.OBJECT_ID));
 
-                articleRepository.update(article.getString(Keys.OBJECT_ID), article);
+                Date createDate = (Date) article.opt(Article.ARTICLE_T_CREATE_DATE);
+                if (null == createDate) { // H2
+                    createDate = (Date) article.opt(Article.ARTICLE_T_CREATE_DATE.toUpperCase());
+                }
+                article.put(Article.ARTICLE_CREATED, createDate.getTime());
+
+                Date updateDate = (Date) article.opt(Article.ARTICLE_T_UPDATE_DATE);
+                if (null == updateDate) { // H2
+                    updateDate = (Date) article.opt(Article.ARTICLE_T_UPDATE_DATE.toUpperCase());
+                }
+                article.put(Article.ARTICLE_UPDATED, updateDate.getTime());
+
+                articleRepository.update(articleId, article);
 
                 if (0 == i % STEP) {
                     transaction.commit();
-                    LOGGER.log(Level.TRACE, "Updated some articles");
+                    LOGGER.log(Level.INFO, "Updated some articles [" + i + "]");
                 }
             }
 
@@ -309,7 +324,53 @@ public class UpgradeService {
                 transaction.commit();
             }
 
-            LOGGER.log(Level.TRACE, "Updated all articles");
+            LOGGER.log(Level.INFO, "Updated all articles");
+        } catch (final Exception e) {
+            if (transaction.isActive()) {
+                transaction.rollback();
+            }
+
+            throw e;
+        }
+    }
+
+    private void upgradeComments() throws Exception {
+        final List<JSONObject> comments = commentRepository.getList(new Query());
+        if (comments.isEmpty()) {
+            LOGGER.log(Level.TRACE, "No comments");
+
+            return;
+        }
+
+        Transaction transaction = null;
+        try {
+            for (int i = 0; i < comments.size(); i++) {
+                if (0 == i % STEP || !transaction.isActive()) {
+                    transaction = userRepository.beginTransaction();
+                }
+
+                final JSONObject comment = comments.get(i);
+                final String commentId = comment.optString(Keys.OBJECT_ID);
+
+                Date createDate = (Date) comment.opt(Comment.COMMENT_T_DATE);
+                if (null == createDate) { // H2
+                    createDate = (Date) comment.opt(Comment.COMMENT_T_DATE.toUpperCase());
+                }
+                comment.put(Comment.COMMENT_CREATED, createDate.getTime());
+
+                commentRepository.update(commentId, comment);
+
+                if (0 == i % STEP) {
+                    transaction.commit();
+                    LOGGER.log(Level.INFO, "Updated some comments [" + i + "]");
+                }
+            }
+
+            if (transaction.isActive()) {
+                transaction.commit();
+            }
+
+            LOGGER.log(Level.INFO, "Updated all comments");
         } catch (final Exception e) {
             if (transaction.isActive()) {
                 transaction.rollback();
@@ -322,12 +383,10 @@ public class UpgradeService {
     /**
      * Send an email to the user who upgrades Solo with a discontinuous version.
      *
-     * @throws ServiceException ServiceException
-     * @throws JSONException    JSONException
-     * @throws IOException      IOException
+     * @throws Exception exception
      */
-    private void notifyUserByEmail() throws ServiceException, JSONException, IOException {
-        if (!Mails.isConfigured()) {
+    private void notifyUserByEmail() throws Exception {
+        if (!Solos.isConfigured()) {
             return;
         }
 
