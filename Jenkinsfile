@@ -1,27 +1,24 @@
-#!/usr/bin/env groovy
 pipeline {
-
-  environment {
-    registry = "docker.io/zxslinux"
-    registryCredential = "zxs60311"
-  }
-
-  agent { docker 'maven:3-alpine' }
-
-  stages {
-    stage('Build') { 
-      steps {
-      	sh 'mvn -B -DskipTests clean package'
-      	scripts {
-      		docker.build registry + ":$BUILD_NUMBER"
+	agent none
+    stages {
+        stage('Build') {
+            agent {
+                docker {
+                    image 'maven:3-alpine' 
+                    args '-v /root/.m2:/root/.m2' 
+                }
+            }
+            steps {
+                sh 'mvn -B -DskipTests clean package' 
+            }
         }
-      }
-  }
-
-  // post {
-  //   always {
-  //     junit 'build/reports/**/*.xml'
-  //   }
-  }
-
+        stage('build docker image') {
+            agent any
+        	steps {
+                sh '''docker login -u zxslinux -p zxs60311
+                docker build -t zxslinux/tomcat-solo .
+                docker push zxslinux/tomcat-solo'''
+        	}
+        }
+    }
 }
